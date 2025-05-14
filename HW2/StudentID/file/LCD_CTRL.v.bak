@@ -1,0 +1,282 @@
+
+module LCD_CTRL(
+    input           clk,
+    input           rst,
+    input  [3:0]    cmd, 
+    input           cmd_valid, 
+    input  [7:0]    IROM_Q,    // 從 IROM 接收圖像資料
+    output reg      IROM_rd,   // IROM 讀取使能
+    output reg [5:0] IROM_A,    // IROM 地址
+    output reg      IRAM_ceb,  // IRAM enable (高有效)
+    output reg      IRAM_web,  // IRAM 讀/寫選擇 (0:寫, 1:讀)
+    output reg [7:0] IRAM_D,    // 要寫入 IRAM 的資料
+    output reg [5:0] IRAM_A,    // IRAM 地址
+    input  [7:0]    IRAM_Q,    // 從 IRAM 讀出的資料
+    output          busy,
+    output          done
+);
+
+/////////////////////////////////
+// 狀態定義
+/////////////////////////////////
+parameter IDLE        = 0;
+parameter READY       = 1; 
+parameter FETCH       = 2;
+parameter OFFSET_ORGN = 3;
+parameter PROCESS     = 4;
+parameter UPDATE      = 5; 
+parameter SAVE_TORAM  = 6;
+parameter DONE        = 7;
+
+reg [3:0] current_state, next_state; // 4-bit state registers
+
+//-----------------------------------------
+// 內部快取：以一維 reg 向量表示 64 個 8-bit 資料 (512 bits)
+//-----------------------------------------
+reg [511:0] CACHE_flat;
+
+//-----------------------------------------
+// 內部暫存器及計數器
+//-----------------------------------------
+reg [6:0] rom_addr_cnt;      // FETCH 狀態下的 IROM 讀取地址 (0~63)
+reg [6:0] cache_wirte_addr;
+reg [6:0] ram_sw_counter;    // SAVE_TORAM 狀態下的 IRAM 寫入地址 (0~63)
+reg [6:0] cache_read_addr;
+
+//-----------------------------------------
+// 操作點 (預設 (4,4)) 
+// 假設 x,y 範圍 0~7，有效操作區在 2~6
+//-----------------------------------------
+reg [3:0] op_x, op_y;
+
+//-----------------------------------------
+// 暫存運算結果 (來自 PROCESS 狀態的計算)
+//-----------------------------------------
+reg [7:0] kernel_result;
+
+// done 與 busy 信號
+assign done = (current_state == DONE);
+assign busy = (current_state != OFFSET_ORGN);
+
+//---------------------------------------------------------------------
+// 狀態機：組合邏輯 (決定下一狀態)
+//---------------------------------------------------------------------
+always @(*) begin
+    case(current_state)
+        IDLE :next_state = READY;
+        READY:next_state = FETCH;
+        FETCH: begin
+            if (rom_addr_cnt == 7'd65)
+                next_state = OFFSET_ORGN;
+            else
+                next_state = FETCH;
+        end
+        OFFSET_ORGN: begin
+            if (cmd_valid) begin
+                case(cmd)
+                    4'd0: next_state = SAVE_TORAM;  // SAVE 命令
+                    4'd1: next_state = OFFSET_ORGN;   // Max
+                    4'd2: next_state = OFFSET_ORGN;   // Max
+                    4'd3: next_state = OFFSET_ORGN;   // Max
+                    4'd4: next_state = OFFSET_ORGN;   // Max
+
+                    4'd5: next_state = PROCESS;   // Max
+                    4'd6: next_state = PROCESS;   // Min
+                    4'd7: next_state = PROCESS;   // Average
+                    default: next_state = OFFSET_ORGN; // Shift 命令不轉換狀態
+                endcase
+            end else begin
+                next_state = OFFSET_ORGN;
+            end
+        end
+        PROCESS: next_state = UPDATE;
+        UPDATE: next_state = OFFSET_ORGN;
+        SAVE_TORAM: begin
+            if (ram_sw_counter == 7'd65)
+                next_state = DONE;
+            else
+                next_state = SAVE_TORAM;
+        end
+        DONE: next_state = DONE;
+        default: next_state = READY;
+    endcase
+end
+
+//---------------------------------------------------------------------
+// 狀態機：順序邏輯 (正緣觸發)
+//---------------------------------------------------------------------
+integer idx;
+integer i, j;  // 迴圈變數
+reg cmd_handled;
+always@(posedge clk or posedge rst)begin
+    if (rst)begin
+        current_state <= IDLE;
+    end 
+    else begin
+        current_state <= next_state;
+    end
+end
+
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        rom_addr_cnt     <= 7'd0;
+        cache_wirte_addr <= 7'd0;
+        cache_read_addr  <= 7'd0;
+        op_x             <= 4'd4;
+        op_y             <= 4'd4;
+        kernel_result    <= 8'd0;
+        ram_sw_counter   <= 7'd0;
+        for (idx = 0; idx < 64; idx = idx + 1) begin
+            CACHE_flat[idx*8 +: 8] <= 8'd0;
+        end
+        IROM_rd   <= 1'b0;
+        IROM_A    <= 6'd0;
+        IRAM_ceb  <= 1'b0;
+        IRAM_web  <= 1'b1;  // 預設為讀取模式
+        IRAM_D    <= 8'd0;
+        IRAM_A    <= 6'd0;
+    end else begin
+        
+        case(current_state)
+            IDLE : ;
+            READY:begin
+                IROM_rd <= 1'b1;
+            end
+
+            FETCH: begin
+                IROM_A  <= rom_addr_cnt;
+                cache_wirte_addr <= rom_addr_cnt;
+                
+            end
+
+            OFFSET_ORGN: begin
+                IROM_rd <= 1'b0; // 結束 FETCH
+                
+                case(cmd)
+                    4'd1: if (op_y > 4'd2) op_y <= op_y - 1; // Shift Up
+                    4'd2: if (op_y < 4'd6) op_y <= op_y + 1; // Shift Down
+                    4'd3: if (op_x > 4'd2) op_x <= op_x - 1; // Shift Left
+                    4'd4: if (op_x < 4'd6) op_x <= op_x + 1; // Shift Right
+                    default: ;
+                endcase
+                
+            end
+
+            PROCESS: begin
+                
+                case(cmd)
+                    4'd5: kernel_result <= compute_max(CACHE_flat, op_x, op_y);
+                    4'd6: kernel_result <= compute_min(CACHE_flat, op_x, op_y);
+                    4'd7: kernel_result <= compute_average(CACHE_flat, op_x, op_y);
+                    default: kernel_result <= 8'd0;
+                endcase
+                
+            end
+
+            UPDATE: begin
+                // 更新 CACHE_flat 中核區域 (4x4 區域) 為 kernel_result
+                for (j = -2; j < 2; j = j + 1) begin
+                    for (i = -2; i < 2; i = i + 1) begin
+                        CACHE_flat[((op_y + j)*8 + (op_x + i))*8 +: 8] <= kernel_result; 
+                    end
+                end
+            end
+
+            SAVE_TORAM: begin
+                IRAM_ceb <= 1'b1;
+                IRAM_web <= 1'b0; // 寫入模式
+                if (ram_sw_counter-1 < 64)begin
+                    IRAM_A   <= ram_sw_counter-1;
+                    //$display("[save] index :%d, val : %d" , (ram_sw_counter-1) , CACHE_flat[(ram_sw_counter-1)*8 +: 8]);
+                    IRAM_D   <= CACHE_flat[(ram_sw_counter-1)*8 +: 8]; 
+                end
+            end
+
+            DONE: begin
+                IRAM_ceb <= 1'b0;
+                IRAM_web <= 1'b1; // 恢復讀取模式
+            end
+            default: ;
+        endcase
+    end
+end
+
+//---------------------------------------------------------------------
+// 負緣觸發：從 IROM 讀取資料到 CACHE_flat
+//---------------------------------------------------------------------
+always @(negedge clk) begin
+    if (current_state == FETCH && IROM_rd && (cache_wirte_addr > 0)) begin
+        CACHE_flat[(cache_wirte_addr-1)*8 +: 8] <= IROM_Q;
+        //$display("[load] index :%d, val : %d" , (cache_wirte_addr-1), IROM_Q);
+    end
+
+    if (current_state == FETCH && IROM_rd) rom_addr_cnt <= rom_addr_cnt + 1;
+end
+
+//---------------------------------------------------------------------
+// 負緣觸發：從 CACHE_flat 存資料到 IRAM
+//---------------------------------------------------------------------
+always @(negedge clk) begin
+    if (current_state == SAVE_TORAM) begin
+        ram_sw_counter <= ram_sw_counter + 1;
+    end
+end
+
+//-----------------------------------------------------
+// 函式：計算最小值、最大值及平均值
+//-----------------------------------------------------
+function [7:0] compute_min(input [511:0] CACHE_IN, input [3:0] x_orgin, input [3:0] y_orgin);
+    reg [7:0] min_val;
+    integer i, j     ;
+    integer index    ;
+    begin
+        index = ((y_orgin - 2) * 8 + (x_orgin - 2)) * 8;
+        min_val = CACHE_IN[index +: 8];
+       //  $display("Initial: x_orgin=%d, y_orgin=%d, index=%d, value=%d", x_orgin, y_orgin, index, CACHE_IN[index +: 8]);
+        for (j = -2; j < 2; j = j + 1) begin
+            for (i = -2; i < 2; i = i + 1) begin
+                index = ((y_orgin + j) * 8 + (x_orgin + i)) * 8;
+                if (CACHE_IN[index +: 8] < min_val)
+                    min_val = CACHE_IN[index +: 8];
+            end
+        end
+        compute_min = min_val;
+    end
+endfunction
+
+function [7:0] compute_max(input [511:0] CACHE_IN, input [3:0] x_orgin, input [3:0] y_orgin);
+    reg [7:0] max_val;
+    integer i, j     ;
+    integer index    ;
+    begin
+        index = ((y_orgin - 2) * 8 + (x_orgin - 2)) * 8;
+        max_val = CACHE_IN[index +: 8];
+        for (j = -2; j < 2; j = j + 1) begin
+            for (i = -2; i < 2; i = i + 1) begin
+                index = ((y_orgin + j) * 8 + (x_orgin + i)) * 8;
+                if (CACHE_IN[index +: 8] > max_val)
+                    max_val = CACHE_IN[index +: 8];
+            end
+        end
+        compute_max = max_val;
+    end
+endfunction
+
+function [7:0] compute_average(input [511:0] CACHE_IN, input [3:0] x_orgin, input [3:0] y_orgin);
+    integer sum  ;
+    integer i, j ;
+    integer index;
+    begin
+        sum = 0;
+        for (j = -2; j < 2; j = j + 1) begin
+            for (i = -2; i < 2; i = i + 1) begin
+                index = ((y_orgin + j) * 8 + (x_orgin + i)) * 8;
+                sum = sum + CACHE_IN[index +: 8];
+            end
+        end
+        compute_average = sum / 16;
+    end
+endfunction
+
+endmodule
+

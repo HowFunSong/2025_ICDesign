@@ -1,0 +1,112 @@
+m255
+K4
+z2
+!s11f vlog 2020.1 2020.02, Feb 28 2020
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+dD:/CSIE_COURSE/ICDESIGN/hist/IC_homework/hw3
+vIRAM
+Z0 DXx6 sv_std 3 std 0 22 VYECXdT12H8WgbUP_5Y6:3
+Z1 !s110 1745165542
+!i10b 1
+!s100 kP0[`KLel^X:m4bS_=_Yh1
+Z2 !s11b Dg1SIo80bB@j0V0VzS_@n1
+I<9VNYReg;?9nn25Xh1dgB0
+Z3 VDg1SIo80bB@j0V0VzS_@n1
+S1
+Z4 dD:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file
+w1741592278
+8./mem/IRAM.sv
+F./mem/IRAM.sv
+!i122 542
+L0 3 29
+Z5 OV;L;2020.1;71
+r1
+!s85 0
+31
+Z6 !s108 1745165542.000000
+!s107 ./mem/IRAM.sv|./mem/IROM.sv|D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/testfixture.sv|
+Z7 !s90 -reportprogress|300|-work|work|-sv|-stats=none|D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/testfixture.sv|
+!i113 1
+Z8 o-work work -sv
+Z9 tCvgOpt 0
+n@i@r@a@m
+vIROM
+R0
+R1
+!i10b 1
+!s100 A9b0VmS;_<eP=>37c8Tn^3
+R2
+Id>?ODk3X=[Xf3VVPoJJen3
+R3
+S1
+R4
+w1741591563
+8./mem/IROM.sv
+F./mem/IROM.sv
+!i122 542
+L0 3 24
+R5
+r1
+!s85 0
+31
+R6
+Z10 !s107 ./mem/IRAM.sv|./mem/IROM.sv|D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/testfixture.sv|
+R7
+!i113 1
+R8
+R9
+n@i@r@o@m
+vLCD_CTRL
+R1
+!i10b 1
+!s100 W@6D1@R8[^YZ>9_FjIb8h3
+R2
+InkPdO>PGOlRAol^94Jg4h2
+R3
+R4
+w1743357668
+8D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/LCD_CTRL.v
+FD:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/LCD_CTRL.v
+!i122 541
+L0 1 254
+R5
+r1
+!s85 0
+31
+!s108 1745165541.000000
+!s107 D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/LCD_CTRL.v|
+!s90 -reportprogress|300|-work|work|-stats=none|D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/LCD_CTRL.v|
+!i113 1
+o-work work
+R9
+n@l@c@d_@c@t@r@l
+vtestfixture
+R0
+R1
+!i10b 1
+!s100 SXal[lRYo7<S3_C;=i@4i3
+R2
+I:zJdo39Xj^AB;VP5J^?CX3
+R3
+S1
+R4
+w1743423109
+8D:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/testfixture.sv
+FD:/CSIE_COURSE/ICDESIGN/2025HW/HW2/StudentID/file/testfixture.sv
+!i122 542
+L0 33 146
+R5
+r1
+!s85 0
+31
+R6
+R10
+R7
+!i113 1
+R8
+R9

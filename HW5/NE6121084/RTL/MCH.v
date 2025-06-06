@@ -26,7 +26,7 @@ reg [4:0] idx_min  ;
 reg [4:0] read_cnt;
 
 // -------------------------------------------------------------------------
-// SORT 階段：計算相對向量、SRA 近似長度、cos，再做 odd-even bubble sort
+// SORT 階段：計算相鄰外積，再做 odd-even bubble sort
 // -------------------------------------------------------------------------
 reg [4:0] sort_cycles;    
 reg       sort_idx;      // 偶 phase / 奇 phase 的切換
@@ -47,20 +47,19 @@ reg signed [8:0] x2, y2;  // stack_ptr-1
 reg signed [17:0] crs;
 
 // -------------------------------------------------------------------------
-// AREA 階段：計算 convex hull 面積 (Shoelace / 三角形拆分累加)
-//  - 用 comb_acc 暫存 twice_area，再除 2 得 area
+// AREA 階段：計算 convex hull 面積 (Shoelace )
+//  - 用 comb_acc 暫存 twice_area
 // -------------------------------------------------------------------------
 reg signed [19:0] comb_acc;  // 累加器
-
 reg [4:0] area_cycles;
 // -------------------------------------------------------------------------
 // 狀態轉換 (combinational)
 // -------------------------------------------------------------------------
 always @(*)begin
     case(state)
-        READ : next_state = (read_cnt == 19)? SWAP : READ;
+        READ : next_state = (read_cnt == 19)      ? SWAP : READ;
         SWAP : next_state = SORT;
-        SORT : next_state = (sort_cycles == 20)? SCAN : SORT;
+        SORT : next_state = (sort_cycles == 20)   ? SCAN : SORT;
         SCAN : next_state = (cur_index == 5'd20 ) ? AREA : SCAN;
         AREA : next_state = (area_cycles == 5'd1) ? DONE : AREA;
         DONE : next_state = READ;
@@ -80,7 +79,6 @@ always @(posedge clk or posedge reset) begin
 end
 
 integer i;  
-
 
 function automatic signed [17:0] cross_res;
   input signed [8:0] x1, y1;
@@ -211,7 +209,7 @@ always @(*) begin
 end
 
 // -------------------------------------------------------------------------
-// 組合邏輯SCAN：計算 comb_acc = twice_area（Pivot 三角形拆分累加）
+// 組合邏輯SCAN：判斷 STACK　是否 Push 或 Pop
 // -------------------------------------------------------------------------
 always @(*) begin
     // 注意：cur_index 與 stack_ptr 
@@ -225,7 +223,7 @@ always @(*) begin
 end
 
 // -------------------------------------------------------------------------
-// 組合邏輯AREA：計算 comb_acc = twice_area（Pivot 三角形拆分累加）
+// 組合邏輯AREA：計算 comb_acc（Shoelace）
 // -------------------------------------------------------------------------
 
 function automatic signed [17:0] cross_calc;
@@ -312,7 +310,6 @@ always @(posedge clk or posedge reset)begin
         
         x_coord[read_cnt]  <= X;
         y_coord[read_cnt]  <= Y;
-
         if (Y < y_coord[idx_min] || (Y == y_coord[idx_min] && X < x_coord[idx_min]))begin
             idx_min <= read_cnt; 
         end
@@ -329,7 +326,6 @@ always @(posedge clk or posedge reset)begin
         x_coord[idx_min] <= x_coord[0];
         y_coord[idx_min] <= y_coord[0];
     end else if (state == SORT) begin
-        
         // ---------------------------------------------------------------------
         // SORT 階段：進行 odd-even bubble sort (時序區塊)
         //  - sort_idx = 0 時做偶 phase (i=1,3,5…)，sort_idx=1 做奇 phase (i=2,4,6…)
@@ -523,7 +519,7 @@ always @(posedge clk or posedge reset)begin
     end else if (state == AREA) begin
         // ---------------------------------------------------------------------
         // AREA 階段 (時序區塊)
-        //  - area = comb_acc / 2（此處假設 comb_acc 已經是 twice_area）
+        //  - area = comb_acc
         // ---------------------------------------------------------------------
         if (area_idx < stack_ptr) begin
             
@@ -543,12 +539,12 @@ always @(posedge clk or posedge reset)begin
         // ---------------------------------------------------------------------
         read_cnt    <= 5'd0;
         idx_min     <= 5'd0;
-        stack_ptr   <= 5'd0;
-        cur_index   <= 5'd0;
         sort_cycles <= 5'd0;
         sort_idx    <= 1'd0;
-        area_idx    <= 5'd0;
         comb_acc    <= 20'sd0;
+        stack_ptr   <= 5'd0;
+        cur_index   <= 5'd0;
+        area_idx    <= 5'd0;
         area_cycles <= 5'd0;
         for (i = 0; i < 20; i = i + 1) begin
             x_coord[i] <= 8'd0;
